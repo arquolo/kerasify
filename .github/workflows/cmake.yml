@@ -1,0 +1,63 @@
+name: CMake
+on: [push]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8]
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        apt install -y clang clang-format
+        python -m pip install --upgrade pip
+        pip install keras tensorflow
+    
+    - name: Build models
+      run: python make_tests.py
+    
+    - name: Upload data and models
+      uses: actions/upload-artifact@v2
+      with:
+        name: blobs
+        path: |
+          include/test/
+          models/
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        build-type: [Debug, Release]
+
+    steps:
+    - name: Create Build Environment
+      run: cmake -E make_directory ${{runner.workspace}}/build
+
+    - name: Configure CMake
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: cmake $GITHUB_WORKSPACE -DCMAKE_BUILD_TYPE=${{matrix.build-type}}
+      env:
+        CC: clang
+        CXX: clang++
+
+    - name: Build
+      working-directory: ${{runner.workspace}}/build
+      shell: bash
+      run: cmake --build . --config ${{matrix.build-type}}
+
+    - name: Test
+      run: ${{runner.workspace}}/build/kerasify
